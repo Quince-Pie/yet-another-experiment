@@ -96,7 +96,7 @@ jobs:
       - name: Keep the attestation bundle as a release asset
         env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
-        run: cp "$BUNDLE" dist/provenance.sigstore.json
+        run: cp "$BUNDLE" dist/provenance.intoto.jsonl
 
       - name: Publish the release
         env:

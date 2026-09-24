@@ -18,7 +18,7 @@ and vouches for what that tree evaluates and builds to.
 | Declared inputs | `flake.lock` inside the tree (`nixpkgs` rev + `narHash`) | inside the source tree |
 | Evaluation identities | derivation and output store paths of `devShells.<system>.*` and `formatter.<system>` for `x86_64-linux` and `aarch64-linux` | `release.json`, recomputed locally by `nix eval` |
 | Release notes | the `CHANGELOG.md` section for the version (pre-releases: `[Unreleased]`) | the GitHub Release body |
-| Evidence | `release.json`, `SHA256SUMS`, `provenance.sigstore.json`, the tag signature | GitHub Release assets, the git tag |
+| Evidence | `release.json`, `SHA256SUMS`, `provenance.intoto.jsonl`, the tag signature | GitHub Release assets, the git tag |
 
 Version = tag name without the leading `v`. The tag is the only place the
 version exists; `CHANGELOG.md` must contain a matching section, which is how

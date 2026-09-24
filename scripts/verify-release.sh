@@ -28,7 +28,7 @@ set -euo pipefail
 readonly REPO=Quince-Pie/yet-another-experiment
 readonly OWNER=${REPO%%/*}
 readonly WORKFLOW=.github/workflows/release.yml
-readonly PROVENANCE=provenance.sigstore.json
+readonly PROVENANCE=provenance.intoto.jsonl
 readonly OIDC_ISSUER=https://token.actions.githubusercontent.com
 
 die() {
@@ -88,16 +88,22 @@ ok "SHA256SUMS covers $narfile and release.json"
 # ---- 2. provenance -----------------------------------------------------
 commit=$(jq -r .source.commit "$dir/release.json")
 identity="https://github.com/$REPO/$WORKFLOW@refs/tags/$tag"
+# The signing certificate's identity (SAN) is set by GitHub's OIDC token,
+# not by the workflow, so it is the trustworthy statement of who signed:
+# this repository's release.yml running at this tag on a GitHub-hosted
+# runner, for this commit. Either verifier checks the Sigstore bundle,
+# the certificate chain, the transparency-log inclusion, and that the
+# file's digest is a subject of the signed statement.
 verify_blob() {
   if command -v cosign >/dev/null 2>&1; then
-    cosign verify-blob-attestation --bundle "$dir/$PROVENANCE" --new-bundle-format \
+    cosign verify-blob-attestation "$dir/$1" --bundle "$dir/$PROVENANCE" \
       --certificate-oidc-issuer "$OIDC_ISSUER" --certificate-identity "$identity" \
       --certificate-github-workflow-repository "$REPO" --certificate-github-workflow-ref "refs/tags/$tag" \
-      "$dir/$1" >/dev/null 2>&1
+      --certificate-github-workflow-sha "$commit" --type https://slsa.dev/provenance/v1 >/dev/null 2>&1
   elif command -v gh >/dev/null 2>&1; then
     gh attestation verify "$dir/$1" --repo "$REPO" --bundle "$dir/$PROVENANCE" \
-      --signer-workflow "$REPO/$WORKFLOW" --source-ref "refs/tags/$tag" --source-digest "$commit" \
-      --deny-self-hosted-runners >/dev/null 2>&1
+      --cert-identity "$identity" --cert-oidc-issuer "$OIDC_ISSUER" --predicate-type https://slsa.dev/provenance/v1 \
+      --source-ref "refs/tags/$tag" --source-digest "$commit" --deny-self-hosted-runners >/dev/null 2>&1
   else
     die "neither cosign nor gh is available to verify the provenance attestation"
   fi
@@ -105,15 +111,16 @@ verify_blob() {
 for f in "$narfile" release.json SHA256SUMS; do
   verify_blob "$f" || die "the provenance attestation does not cover $f, or was not produced by $identity"
 done
-# The verifier proved the signature and identity; now check what the
-# provenance says about the source, so a bundle for another build of the
-# same workflow cannot be substituted.
+# The verifier proved signature and identity; the statement's own claims
+# (written by the workflow job) must agree with release.json, so a bundle
+# from another run of the same workflow cannot be substituted.
 statement=$(jq -r '.dsseEnvelope.payload' "$dir/$PROVENANCE" | base64 -d)
-jq -e --arg commit "$commit" --arg ref "refs/tags/$tag" --arg repo "https://github.com/$REPO" \
+jq -e --arg commit "$commit" --arg ref "refs/tags/$tag" --arg repo "https://github.com/$REPO" --arg workflow "$WORKFLOW" \
   '.predicateType == "https://slsa.dev/provenance/v1"
-   and (.predicate.buildDefinition.resolvedDependencies | any(.uri == ($repo + "@" + $ref) and .digest.gitCommit == $commit))
-   and (.predicate.buildDefinition.externalParameters.workflow.ref == $ref)' <<<"$statement" >/dev/null ||
-  die "the provenance is not for $REPO@refs/tags/$tag at commit $commit"
+   and (.predicate.buildDefinition.resolvedDependencies | any(.uri == ("git+" + $repo + "@" + $ref) and .digest.gitCommit == $commit))
+   and (.predicate.buildDefinition.externalParameters.workflow | .ref == $ref and .repository == $repo and .path == $workflow)
+   and (.predicate.buildDefinition.internalParameters.github | .event_name == "push" and .runner_environment == "github-hosted")' \
+  <<<"$statement" >/dev/null || die "the provenance is not for $REPO@refs/tags/$tag at commit $commit"
 ok "provenance: built by $identity from commit $commit"
 
 # ---- 3. maintainer authorisation ---------------------------------------
