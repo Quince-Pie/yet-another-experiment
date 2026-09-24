@@ -1,0 +1,23 @@
+name: Install Nix
+description: >-
+  Install the pinned upstream Nix release. The installer script is fetched
+  and checked against a pinned SHA-256 before it runs; the script itself pins
+  the SHA-256 of the Nix tarball it downloads, so the whole install is fixed
+  by the two constants below.
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch the pinned Nix installer
+      shell: bash
+      env:
+        NIX_VERSION: 2.35.2
+        NIX_INSTALL_SHA256: 9adda97297d9e8ab360df95c729eabff4f4f93d6db091953c3a68f29e3fb130c
+      run: |
+        curl -fsSL --retry 3 --proto '=https' -o "$RUNNER_TEMP/nix-install" \
+          "https://releases.nixos.org/nix/nix-$NIX_VERSION/install"
+        echo "$NIX_INSTALL_SHA256  $RUNNER_TEMP/nix-install" | sha256sum --check --strict
+    - name: Run the installer
+      uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      with:
+        install_url: file://${{ runner.temp }}/nix-install

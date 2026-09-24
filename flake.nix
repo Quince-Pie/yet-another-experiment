@@ -8,7 +8,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/293d6abedf0478e681a4dfcfcb35b30fc796a32f";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       # poop needs perf_event_open and mold cannot emit Mach-O, so the matrix is
       # Linux by construction rather than silently degraded on Darwin.
@@ -173,6 +173,90 @@
           ) compilers;
         in
         shells // { default = shells.gcc; }
+      );
+
+      # Everything the release workflow verifies is a flake check, so `nix flake
+      # check` locally and on GitHub run the same derivations with the same
+      # pinned tools. Building `dev-shells` realises every shell from the lock
+      # file alone (the ~700 MiB toolchain closure comes from cache.nixos.org).
+      checks = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor.${system};
+          inherit (pkgs) lib;
+        in
+        {
+          dev-shells = pkgs.linkFarm "dev-shells" (
+            lib.mapAttrsToList (name: path: { inherit name path; }) self.devShells.${system}
+          );
+
+          # Formatters rewrite files in place, so they get a writable copy.
+          format = pkgs.runCommand "check-format" { nativeBuildInputs = [ self.formatter.${system} ]; } ''
+            cp -r ${self} src && chmod -R u+w src && cd src
+            treefmt --ci --walk filesystem --tree-root .
+            touch "$out"
+          '';
+
+          lint =
+            pkgs.runCommand "check-lint"
+              {
+                nativeBuildInputs = [
+                  pkgs.actionlint
+                  pkgs.shellcheck
+                  pkgs.zizmor
+                ];
+              }
+              ''
+                cd ${self}
+                actionlint .github/workflows/*.yml
+                zizmor --no-online-audits --persona pedantic --min-severity low .github/workflows .github/actions/*/action.yml
+                shellcheck --shell=bash --external-sources scripts/*.sh tests/*.sh
+                touch "$out"
+              '';
+        }
+      );
+
+      # `nix run .#release` / `nix run .#verify-release` run scripts/*.sh with
+      # their dependencies pinned to this flake's nixpkgs, so a maintainer, the
+      # release workflow and a recipient use identical git/jq/gh/cosign builds.
+      # `nix` itself is deliberately not wrapped: the caller's nix must match the
+      # caller's daemon.
+      apps = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor.${system};
+          inherit (pkgs) lib;
+          mkApp = name: description: runtimeInputs: {
+            type = "app";
+            program = lib.getExe (
+              pkgs.writeShellApplication {
+                inherit name runtimeInputs;
+                text = ''exec ${self}/scripts/${name}.sh "$@"'';
+              }
+            );
+            meta = { inherit description; };
+          };
+          common = [
+            pkgs.coreutils
+            pkgs.curl
+            pkgs.git
+            pkgs.gnupg
+            pkgs.jq
+            pkgs.openssh
+          ];
+        in
+        {
+          release = mkApp "release" "Verify, package and publish a release of this flake" (
+            common ++ [ pkgs.gh ]
+          );
+          verify-release = mkApp "verify-release" "Verify a published release of this flake as a recipient" (
+            common
+            ++ [
+              pkgs.cosign
+              pkgs.gh
+            ]
+          );
+        }
       );
 
       formatter = forAllSystems (system: pkgsFor.${system}.nixfmt-tree);

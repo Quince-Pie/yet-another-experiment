@@ -1,0 +1,22 @@
+# Runs the shared verification on every push to main and every pull request,
+# so a release tag is only ever cut from a tree that already passed exactly
+# the checks the release workflow will repeat. Pull requests get a read-only
+# token and no secrets.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yml
