@@ -152,10 +152,27 @@ download is the smaller part of a job that completes in about a minute
 
 ## 4. Live acceptance and measurements
 
-Filled in from the runs listed in `docs/audit/live-acceptance.md`, which
-records run URLs, revisions, timings and the recipient verification
-transcript, including the adversarial cases (tampered asset, wrong tag,
-wrong signer, unsigned tag).
+`docs/audit/live-acceptance.md` records the runs, revisions, timings, the
+published release, the recipient transcript and the adversarial cases. In
+summary, on this repository's real flake with a throwaway signing key:
+
+| Check | Result |
+|---|---|
+| Tag push to published pre-release `v0.1.0-rc.2`, both systems verified natively | 118 s end to end; verify jobs 66 s (aarch64) and 77 s (x86_64), publish job 27 s |
+| Cold substitution per system (fresh store) | 156 paths, 702 to 710 MiB download, 2.8 GiB unpacked |
+| Recipient verification without credentials (cosign and gh paths) | all five checks pass in 6.6 s |
+| Tampered NAR, tampered manifest with matching checksums, tampered provenance, wrong trust root, wrong tag, missing release | all rejected with the expected reason |
+| Unsigned annotated tag pushed | rejected in 5 s at the tag job; nothing published |
+| Publish job re-run for the published tag | refused ("already published"); release unchanged |
+| GitHub tarball for the tag vs. packed NAR vs. git tree | identical narHash (cross-check in the publish job and in the recipient script) |
+| Nix `verifyCommit` with the signing key over `git+https` | accepts the tag's commit; rejects another key |
+
+Efficiency reading: the dominant cost of a release is the two verify jobs,
+and within them the toolchain substitution plus the tooling tests; the
+publish job is under half a minute. At the project's release cadence
+(toolchain bumps, well under one a week) no cache could be reused across
+runs, so none is configured; a release costs about three runner-minutes
+in total.
 
 ## 5. Residual risks and unresolved evidence
 

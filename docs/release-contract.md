@@ -76,17 +76,19 @@ A release is published only when, for the tagged commit:
    yields the same `narHash`, so recipients using `github:` get the bytes
    that were verified;
 7. the assets are attested (SLSA v1 provenance, Sigstore) before upload,
-   uploaded to a draft, compared name-by-name and size-by-size with the
-   local files, and only then published.
+   uploaded to a draft, compared with the local files by name, size and
+   SHA-256 digest, and only then published.
 
 The recorded evaluation identities come from the same runs that built and
 smoke-tested the shells, so the manifest describes exactly what was checked.
 
 ## 4. Failure, duplicates and recovery
 
-- **Overlapping releases** are serialised by the workflow `concurrency`
-  group `release` (no cancellation). Two tags pushed together produce two
-  releases in order.
+- **Overlapping releases.** Runs are grouped by tag (`concurrency` group
+  `release-<ref>`, no cancellation): a second push of the same tag waits
+  for the first; different tags run in parallel and each publishes its own
+  release. When two stable tags are published within minutes of each other,
+  whichever publishes last is marked *latest*.
 - **A tag that already has a published release** is never modified: the
   publish step fails with "already published". Re-running the workflow for a
   published tag is therefore safe and a no-op. Deleting and re-pushing a

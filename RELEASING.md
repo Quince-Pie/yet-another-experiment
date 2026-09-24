@@ -117,6 +117,11 @@ workflow runs.
 - **cache.nixos.org or GitHub are unavailable.** Runs fail cleanly; re-run
   later. The release script never partially publishes.
 
+Two Nix habits matter here: `nix flake check`, `nix run .#release` and the
+release scripts only see files that are tracked by git (stage new files
+with `git add` before running them), and `nix flake check` on one machine
+builds only that machine's system while evaluating the other.
+
 ## Updating the toolchain
 
 `flake.nix` pins `nixpkgs` by revision and `flake.lock` records its
@@ -130,9 +135,10 @@ match `flake.nix`.
 
 - Actions are pinned by full commit SHA with the version in a comment; bump
   them deliberately and re-run the `CI` workflow.
-- The Nix version installed on runners is pinned in
-  `.github/workflows/verify.yml`; bump it together with a local test
-  (`tests/test-release.sh`), which exercises every subcommand of
-  `scripts/release.sh` against a throwaway repository and a fake `gh`.
+- The Nix version installed on runners is pinned (version and installer
+  script SHA-256) in `.github/actions/install-nix/action.yml`; bump both
+  together, and run `tests/test-release.sh`, which exercises every
+  subcommand of `scripts/release.sh` against a throwaway repository and a
+  fake `gh`, on the new version.
 - `scripts/release.sh`, `scripts/verify-release.sh` and the workflows are
   linted by `nix flake check` (`checks.<system>.lint`).
