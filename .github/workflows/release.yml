@@ -90,7 +90,6 @@ jobs:
             dist/yet-another-experiment-*.nar
             dist/release.json
             dist/SHA256SUMS
-          predicate-type: https://slsa.dev/provenance/v1
           create-storage-record: false
 
       - name: Keep the attestation bundle as a release asset
