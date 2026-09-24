@@ -21,7 +21,7 @@ set -euo pipefail
 
 readonly PROJECT=yet-another-experiment
 readonly REPO=Quince-Pie/yet-another-experiment
-readonly PROVENANCE=provenance.sigstore.json
+readonly PROVENANCE=provenance.intoto.jsonl
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo 'release: run this inside the repository' >&2
   exit 1
@@ -221,12 +221,14 @@ cmd_archive() {
   [[ -s $DIST/tag.json ]] || die "run 'release.sh verify-tag TAG' first"
   [[ -z $(git -C "$ROOT" status --porcelain) ]] ||
     die "the working tree has uncommitted or untracked changes; the archive must be the committed tree"
-  local meta path narhash rev version file filehash
-  meta=$(nix flake metadata "${NIX_FLAGS[@]}" --json "$ROOT")
-  path=$(jq -r .path <<<"$meta")
-  narhash=$(jq -r .locked.narHash <<<"$meta")
-  rev=$(jq -r .revision <<<"$meta")
-  [[ $rev == "$(jq -r .commit "$DIST/tag.json")" ]] || die "flake revision $rev is not the tagged commit"
+  # `nix flake prefetch` copies the committed tree into the store (metadata
+  # alone may only compute its hash lazily) and reports the narHash.
+  local pre path narhash rev version file filehash
+  pre=$(nix flake prefetch --json "$ROOT")
+  path=$(jq -r .storePath <<<"$pre")
+  narhash=$(jq -r .hash <<<"$pre")
+  rev=$(jq -r '.locked.rev // empty' <<<"$pre")
+  [[ $rev == "$(jq -r .commit "$DIST/tag.json")" ]] || die "flake revision '$rev' is not the tagged commit"
   version=$(jq -r .version "$DIST/tag.json")
   file=$PROJECT-$version.nar
   nix nar pack "$path" >"$DIST/$file"

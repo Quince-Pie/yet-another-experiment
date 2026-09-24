@@ -116,7 +116,7 @@ if [[ $(nix hash file --sri --type sha256 "$nar") == "$narhash" ]]; then ok 'NAR
 # Independent reproduction: a fresh clone of the tag, dumped by a separate
 # nix invocation, must be byte-identical.
 git clone -q --branch v0.1.0-rc.1 "$REPO" "$TMP/clone" 2>/dev/null
-nix nar pack "$(nix flake metadata --json "git+file://$TMP/clone" | jq -r .path)" >"$TMP/clone.nar"
+nix nar pack "$(nix flake prefetch --json "git+file://$TMP/clone" | jq -r .storePath)" >"$TMP/clone.nar"
 if cmp -s "$nar" "$TMP/clone.nar"; then ok 'NAR reproduces byte-for-byte from a fresh clone'; else bad 'NAR reproduction'; fi
 if [[ $(nix flake metadata --json "git+file://$TMP/clone" | jq -r .locked.narHash) == "$narhash" ]]; then
   ok 'fresh clone narHash equals the archive narHash'
@@ -213,7 +213,7 @@ reset_state() { # reset_state [existing-releases-json]
 }
 reset_state
 expect_fail 'publish requires the provenance bundle' 'missing asset' "$R" publish v0.1.0-rc.1
-echo '{"fake":"bundle"}' >"$RELEASE_DIST/provenance.sigstore.json"
+echo '{"fake":"bundle"}' >"$RELEASE_DIST/provenance.intoto.jsonl"
 rm "$FAKE/ref.json"
 expect_fail 'publish refuses when the tag is not on the remote' 'does not exist on github.com' "$R" publish v0.1.0-rc.1
 reset_state
