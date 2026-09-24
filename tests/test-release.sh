@@ -35,7 +35,8 @@ expect_ok() {
     bad "$name: $(tail -n2 <<<"$out" | tr '\n' ' ')"
   fi
 }
-git_() { git -C "$REPO" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false "$@"; }
+# Fixture commits and tags must not pick up the maintainer's signing config.
+git_() { git -C "$REPO" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 sign_tag() { # sign_tag KEY TAG [MESSAGE]
   git_ -c gpg.format=ssh -c user.signingkey="$1" tag -s -m "${3:-release $2}" "$2"
 }
@@ -144,6 +145,20 @@ else
 fi
 
 echo '# assemble'
+# The manifest's notes come from CHANGELOG.md; use a fixture so the test does
+# not depend on the real changelog (whose Unreleased section is legitimately
+# empty right after a release).
+cat >"$REPO/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## [Unreleased]
+
+- pending change
+
+## [0.0.9] - 2026-09-01
+
+- older
+EOF
 expect_fail 'assemble requires a fragment per supported system' 'missing' "$R" assemble v0.1.0-rc.1
 # Test fixture only: the other system's fragment is a relabelled copy.
 for s in $(nix eval --json "$REPO#devShells" --apply builtins.attrNames | jq -r '.[]'); do
@@ -156,10 +171,10 @@ if jq -e --arg nh "$narhash" '.manifestVersion == 1 and .tag == "v0.1.0-rc.1" an
   ok 'release.json links tag, narHash, inputs and systems'
 else bad 'release.json content'; fi
 if (cd "$RELEASE_DIST" && sha256sum --quiet --strict -c SHA256SUMS); then ok 'SHA256SUMS verifies'; else bad 'SHA256SUMS'; fi
-if [[ $(head -n "$("$R" notes 0.1.0-rc.1 | wc -l)" "$RELEASE_DIST/release-notes.md") == "$("$R" notes 0.1.0-rc.1)" ]] &&
-  grep -q "$narhash" "$RELEASE_DIST/release-notes.md"; then
+if [[ $(head -n1 "$RELEASE_DIST/release-notes.md") == '- pending change' ]] && grep -q "$narhash" "$RELEASE_DIST/release-notes.md"; then
   ok 'release notes carry the changelog section and the narHash'
 else bad 'release notes'; fi
+git_ checkout -q -- CHANGELOG.md
 
 echo '# publish (fake gh)'
 FAKE=$TMP/fake
