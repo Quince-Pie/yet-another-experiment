@@ -8,7 +8,7 @@ bump upgrades a toolchain or adds a shell, a patch bump fixes a shell without
 changing its toolchain. The release workflow publishes the section for the
 tagged version as the release notes; pre-releases use the Unreleased section.
 
-## [Unreleased]
+## [0.1.0]
 
 ### Added
 
